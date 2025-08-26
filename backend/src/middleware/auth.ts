@@ -1,13 +1,15 @@
 import { Request, Response, NextFunction } from "express";
 import jwt, { JwtPayload } from "jsonwebtoken";
 
-// Extend Express Request type so we can attach `user`
-declare module "express-serve-static-core" {
-  interface Request {
-    user?: {
-      id: string;
-      [key: string]: any;
-    };
+// Extend Express Request type globally
+declare global {
+  namespace Express {
+    interface Request {
+      user?: {
+        id: string;
+        [key: string]: any;
+      };
+    }
   }
 }
 
@@ -27,19 +29,17 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
     const decoded = jwt.verify(
       token,
       process.env.SUPABASE_JWT_SECRET || "default_secret"
-    ) as JwtPayload;
+    ) as JwtPayload & { sub?: string };
 
-    // Supabase always puts user.id in "sub"
     req.user = {
-      id: decoded.sub as string,
+      id: decoded.sub ?? "", // Supabase puts user.id in "sub"
       ...decoded,
     };
 
-    next();
-  } catch (err: unknown) {
-    if (err instanceof Error) {
-      return res.status(401).json({ error: "Auth failed: " + err.message });
-    }
-    return res.status(401).json({ error: "Unauthorized" });
+    return next();
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Token verification failed";
+    return res.status(401).json({ error: "Auth failed: " + message });
   }
 }
